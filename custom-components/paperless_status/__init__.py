@@ -1,0 +1,1 @@
+"""Paperless Status Sensor Integration"""

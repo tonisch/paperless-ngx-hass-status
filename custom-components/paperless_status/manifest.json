@@ -1,0 +1,8 @@
+{
+  "domain": "paperless_status",
+  "name": "Paperless Status Sensor",
+  "documentation": "https://github.com/tonisch/paperless-ngx-hass-status",
+  "requirements": ["requests"],
+  "codeowners": ["@tonisch"],
+  "version": "0.0.1"
+}
