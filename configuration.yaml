@@ -3,3 +3,16 @@ sensor:
     host: "http://ihre-paperless-instanz:8000"
     token: "Ihr-API-Token"
     scan_interval: 300 
+
+automation:
+  - alias: "Paperless Neue Dokumente Benachrichtigung"
+    trigger:
+      platform: event
+      event_type: paperless_new_document
+    action:
+      - service: notify.mobile_app_ihr_handy
+        data_template:
+          title: "Neues Paperless Dokument"
+          message: "{{ trigger.event.data.title }}"
+          data:
+            image: "{{ trigger.event.data.preview }}"
