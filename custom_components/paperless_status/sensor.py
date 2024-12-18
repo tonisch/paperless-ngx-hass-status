@@ -1,87 +1,99 @@
-"""Paperless-ngx Status Sensor für Home Assistant."""
-from datetime import timedelta
-import logging
+"""Platform for sensor integration."""
+from __future__ import annotations
 import aiohttp
-import voluptuous as vol
+import async_timeout
+import logging
+from datetime import timedelta
 
-from homeassistant.components.sensor import PLATFORM_SCHEMA
+from homeassistant.components.sensor import SensorEntity
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.const import (
     CONF_HOST,
+    CONF_PORT,
+    CONF_SSL,
     CONF_TOKEN,
-    CONF_NAME,
-    CONF_SCAN_INTERVAL
 )
-from homeassistant.helpers.entity import Entity
-import homeassistant.helpers.config_validation as cv
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.util import Throttle
 
 _LOGGER = logging.getLogger(__name__)
+MIN_TIME_BETWEEN_UPDATES = timedelta(seconds=60)
 
-DEFAULT_NAME = "Paperless Health"
-DEFAULT_SCAN_INTERVAL = timedelta(minutes=5)
+async def async_setup_entry(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Set up the sensor platform."""
+    host = config_entry.data[CONF_HOST]
+    port = config_entry.data[CONF_PORT]
+    ssl = config_entry.data[CONF_SSL]
+    token = config_entry.data[CONF_TOKEN]
+    
+    async_add_entities([PaperlessStatusSensor(hass, host, port, ssl, token)], True)
 
-PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
-    vol.Required(CONF_HOST): cv.url,
-    vol.Required(CONF_TOKEN): cv.string,
-    vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
-    vol.Optional(CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL): cv.time_period
-})
+class PaperlessStatusSensor(SensorEntity):
+    """Representation of a Paperless Status Sensor."""
 
-async def async_setup_platform(hass, config, async_add_entities, discovery_info=None):
-    """Richte den Paperless-Sensor ein."""
-    name = config.get(CONF_NAME)
-    host = config.get(CONF_HOST)
-    token = config.get(CONF_TOKEN)
-
-    async_add_entities([PaperlessStatusSensor(name, host, token)], True)
-
-class PaperlessStatusSensor(Entity):
-    """Sensor für den Paperless-ngx Gesundheitsstatus."""
-
-    def __init__(self, name, host, token):
-        self._name = name
-        self._host = host.rstrip('/')
+    def __init__(self, hass: HomeAssistant, host: str, port: int, ssl: bool, token: str) -> None:
+        """Initialize the sensor."""
+        self.hass = hass
+        self._host = host
+        self._port = port
+        self._ssl = ssl
         self._token = token
-        self._state = None
-        self._attributes = {}
+        self._attr_name = "Paperless Status"
+        self._attr_unique_id = f"paperless_status_{host}_{port}"
+        self._attr_native_value = "Unknown"
+        self._attr_extra_state_attributes = {
+            "documents_count": 0,
+            "last_error": None
+        }
+        self._session = async_get_clientsession(hass)
 
     @property
-    def name(self):
-        """Rückgabe des Sensornamens."""
-        return self._name
+    def icon(self):
+        """Icon to use in the frontend."""
+        if self._attr_native_value == "Online":
+            return "mdi:file-document-multiple"
+        return "mdi:file-document-multiple-outline"
 
-    @property
-    def state(self):
-        """Rückgabe des Sensorstatus."""
-        return self._state
-
-    @property
-    def extra_state_attributes(self):
-        """Rückgabe der Sensorattribute."""
-        return self._attributes
-
-    async def async_update(self):
-        """Hole die neuesten Daten von Paperless-ngx."""
+    @Throttle(MIN_TIME_BETWEEN_UPDATES)
+    async def async_update(self) -> None:
+        """Fetch new state data for the sensor."""
+        protocol = "https" if self._ssl else "http"
+        url = f"{protocol}://{self._host}:{self._port}/api/documents/"
+        
         headers = {
-            "Authorization": f"Token {self._token}"
+            "Authorization": f"Token {self._token}",
+            "Content-Type": "application/json"
         }
 
         try:
-            async with aiohttp.ClientSession() as session:
-                # Prüfe den Status-Endpunkt
-                async with session.get(f"{self._host}/api/", headers=headers) as response:
+            async with async_timeout.timeout(10):
+                async with self._session.get(url, headers=headers) as response:
                     if response.status == 200:
-                        self._state = "online"
-                        # Hole zusätzliche Statistiken
-                        async with session.get(f"{self._host}/api/statistics/", headers=headers) as stats_response:
-                            if stats_response.status == 200:
-                                stats = await stats_response.json()
-                                self._attributes = {
-                                    "document_count": stats.get("document_count", 0),
-                                    "inbox_count": stats.get("inbox_count", 0),
-                                    "total_size": stats.get("total_size", 0)
-                                }
+                        data = await response.json()
+                        self._attr_native_value = "Online"
+                        self._attr_extra_state_attributes["documents_count"] = data.get("count", 0)
+                        self._attr_extra_state_attributes["last_error"] = None
+                    elif response.status == 401:
+                        self._attr_native_value = "Unauthorized"
+                        self._attr_extra_state_attributes["last_error"] = "Invalid authentication token"
                     else:
-                        self._state = "offline"
+                        self._attr_native_value = "Error"
+                        self._attr_extra_state_attributes["last_error"] = f"HTTP {response.status}"
+        except aiohttp.ClientError as err:
+            self._attr_native_value = "Offline"
+            self._attr_extra_state_attributes["last_error"] = str(err)
+            _LOGGER.error("Error connecting to Paperless: %s", err)
+        except asyncio.TimeoutError:
+            self._attr_native_value = "Timeout"
+            self._attr_extra_state_attributes["last_error"] = "Connection timeout"
+            _LOGGER.error("Timeout connecting to Paperless")
         except Exception as err:
-            _LOGGER.error("Fehler beim Abrufen von Paperless-ngx: %s", err)
-            self._state = "error"
+            self._attr_native_value = "Error"
+            self._attr_extra_state_attributes["last_error"] = str(err)
+            _LOGGER.error("Unexpected error: %s", err)
