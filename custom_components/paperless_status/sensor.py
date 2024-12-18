@@ -1,5 +1,6 @@
 """Platform for sensor integration."""
 from __future__ import annotations
+import asyncio
 import aiohttp
 import async_timeout
 import logging

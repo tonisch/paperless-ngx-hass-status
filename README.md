@@ -9,11 +9,3 @@
 3. Installieren Sie die Integration
 4. Konfigurieren Sie die Sensor-Optionen in Ihrer `configuration.yaml`
 
-## Konfiguration
-
-```yaml
-sensor:
-  - platform: paperless_status
-    host: localhost
-    port: 8000
-    ssl: false
