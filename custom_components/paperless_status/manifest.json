@@ -4,7 +4,7 @@
   "documentation": "https://github.com/tonisch/paperless-ngx-hass-status",
   "issue_tracker": "https://github.com/tonisch/paperless-ngx-hass-status/issues",
   "dependencies": [],
-  "version": "1.0.10",
+  "version": "1.0.11",
   "codeowners": ["@tonisch"],
   "requirements": [],
   "iot_class": "local_polling",
