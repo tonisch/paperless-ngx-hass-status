@@ -1,10 +1,11 @@
 {
   "domain": "paperless_status",
-  "name": "Paperless-ngx Status",
-  "documentation": "",
+  "name": "Paperless Status Sensor",
+  "documentation": "https://github.com/tonisch/paperless-ngx-hass-status",
+  "issue_tracker": "https://github.com/tonisch/paperless-ngx-hass-status/issues",
   "dependencies": [],
-  "codeowners": [],
-  "requirements": [],
   "version": "1.0.0",
-  "iot_class": "cloud_polling"
+  "codeowners": ["@tonisch"],
+  "requirements": [],
+  "iot_class": "local_polling"
 } 
