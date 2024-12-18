@@ -4,8 +4,10 @@
   "documentation": "https://github.com/tonisch/paperless-ngx-hass-status",
   "issue_tracker": "https://github.com/tonisch/paperless-ngx-hass-status/issues",
   "dependencies": [],
-  "version": "1.0.0",
+  "version": "1.0.1",
   "codeowners": ["@tonisch"],
   "requirements": [],
-  "iot_class": "local_polling"
+  "iot_class": "local_polling",
+  "icon": "mdi:file-document-multiple",
+  "config_flow": true
 } 
