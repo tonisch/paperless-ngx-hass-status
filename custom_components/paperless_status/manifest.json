@@ -4,11 +4,11 @@
   "documentation": "https://github.com/tonisch/paperless-ngx-hass-status",
   "issue_tracker": "https://github.com/tonisch/paperless-ngx-hass-status/issues",
   "dependencies": [],
-  "version": "1.0.11",
+  "version": "1.0.12",
   "codeowners": ["@tonisch"],
   "requirements": [],
   "iot_class": "local_polling",
   "config_flow": true,
   "integration_type": "device",
-  "logotype": "brands/paperless.png"
+  "logotype": "brand:logo.png"
 } 
