@@ -1,0 +1,5 @@
+sensor:
+  - platform: paperless_health
+    host: "http://ihre-paperless-instanz:8000"
+    token: "Ihr-API-Token"
+    scan_interval: 300 
