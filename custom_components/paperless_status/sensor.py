@@ -32,9 +32,9 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     host = config.get(CONF_HOST)
     token = config.get(CONF_TOKEN)
 
-    async_add_entities([PaperlessHealthSensor(name, host, token)], True)
+    async_add_entities([PaperlessStatusSensor(name, host, token)], True)
 
-class PaperlessHealthSensor(Entity):
+class PaperlessStatusSensor(Entity):
     """Sensor für den Paperless-ngx Gesundheitsstatus."""
 
     def __init__(self, name, host, token):
@@ -84,4 +84,4 @@ class PaperlessHealthSensor(Entity):
                         self._state = "offline"
         except Exception as err:
             _LOGGER.error("Fehler beim Abrufen von Paperless-ngx: %s", err)
-            self._state = "error" 
+            self._state = "error"

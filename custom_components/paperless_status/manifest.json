@@ -1,6 +1,6 @@
 {
-  "domain": "paperless_health",
-  "name": "Paperless-ngx status health",
+  "domain": "paperless_status",
+  "name": "Paperless-ngx Status",
   "documentation": "",
   "dependencies": [],
   "codeowners": [],
