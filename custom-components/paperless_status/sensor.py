@@ -1,136 +1,87 @@
-
-"""
-Paperless-ngx Status Sensor for Home Assistant
-
-This custom sensor integration checks the status of a Paperless-ngx Docker container
-and provides various state attributes about its health and performance.
-
-Installation:
-1. Place this file in your Home Assistant configuration directory:
-   <config_dir>/custom_components/paperless_status/sensor.py
-
-2. Add configuration to configuration.yaml:
-   sensor:
-     - platform: paperless_status
-       host: localhost
-       port: 8000
-       ssl: false
-"""
-
-import logging
+"""Paperless-ngx Status Sensor für Home Assistant."""
 from datetime import timedelta
-import requests
-
+import logging
+import aiohttp
 import voluptuous as vol
-import homeassistant.helpers.config_validation as cv
-from homeassistant.components.sensor import (
-    SensorEntity,
-    PLATFORM_SCHEMA
-)
+
+from homeassistant.components.sensor import PLATFORM_SCHEMA
 from homeassistant.const import (
-    CONF_HOST, 
-    CONF_PORT,
-    CONF_SSL,
-    STATE_UNAVAILABLE,
-    STATE_RUNNING
+    CONF_HOST,
+    CONF_TOKEN,
+    CONF_NAME,
+    CONF_SCAN_INTERVAL
 )
-from homeassistant.util import Throttle
+from homeassistant.helpers.entity import Entity
+import homeassistant.helpers.config_validation as cv
 
 _LOGGER = logging.getLogger(__name__)
 
-# Configuration schema
+DEFAULT_NAME = "Paperless Health"
+DEFAULT_SCAN_INTERVAL = timedelta(minutes=5)
+
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
-    vol.Required(CONF_HOST, default='localhost'): cv.string,
-    vol.Required(CONF_PORT, default=8000): cv.port,
-    vol.Optional(CONF_SSL, default=False): cv.boolean,
+    vol.Required(CONF_HOST): cv.url,
+    vol.Required(CONF_TOKEN): cv.string,
+    vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
+    vol.Optional(CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL): cv.time_period
 })
 
-# Minimum time between updates
-MIN_TIME_BETWEEN_UPDATES = timedelta(minutes=5)
-
-def setup_platform(hass, config, add_entities, discovery_info=None):
-    """Set up the Paperless status sensor."""
+async def async_setup_platform(hass, config, async_add_entities, discovery_info=None):
+    """Richte den Paperless-Sensor ein."""
+    name = config.get(CONF_NAME)
     host = config.get(CONF_HOST)
-    port = config.get(CONF_PORT)
-    use_ssl = config.get(CONF_SSL)
+    token = config.get(CONF_TOKEN)
 
-    add_entities([PaperlessSensor(host, port, use_ssl)], True)
+    async_add_entities([PaperlessHealthSensor(name, host, token)], True)
 
-class PaperlessSensor(SensorEntity):
-    """Representation of a Paperless status sensor."""
+class PaperlessHealthSensor(Entity):
+    """Sensor für den Paperless-ngx Gesundheitsstatus."""
 
-    def __init__(self, host, port, use_ssl):
-        """Initialize the sensor."""
-        self._host = host
-        self._port = port
-        self._use_ssl = use_ssl
-        self._state = STATE_UNAVAILABLE
+    def __init__(self, name, host, token):
+        self._name = name
+        self._host = host.rstrip('/')
+        self._token = token
+        self._state = None
         self._attributes = {}
 
     @property
     def name(self):
-        """Return the name of the sensor."""
-        return "Paperless Status"
+        """Rückgabe des Sensornamens."""
+        return self._name
 
     @property
     def state(self):
-        """Return the state of the sensor."""
+        """Rückgabe des Sensorstatus."""
         return self._state
 
     @property
     def extra_state_attributes(self):
-        """Return the state attributes."""
+        """Rückgabe der Sensorattribute."""
         return self._attributes
 
-    @Throttle(MIN_TIME_BETWEEN_UPDATES)
-    def update(self):
-        """Update sensor state and attributes."""
+    async def async_update(self):
+        """Hole die neuesten Daten von Paperless-ngx."""
+        headers = {
+            "Authorization": f"Token {self._token}"
+        }
+
         try:
-            # Construct base URL
-            protocol = 'https' if self._use_ssl else 'http'
-            base_url = f"{protocol}://{self._host}:{self._port}"
-
-            # Check if Paperless is accessible
-            response = requests.get(f"{base_url}/admin/", timeout=10)
-            
-            if response.status_code == 200:
-                self._state = STATE_RUNNING
-                
-                # Additional status checks (mock data - replace with actual API calls if available)
-                self._attributes = {
-                    "documents_total": self._get_document_count(base_url),
-                    "documents_untagged": self._get_untagged_document_count(base_url),
-                    "storage_used": self._get_storage_usage(base_url)
-                }
-            else:
-                self._state = STATE_UNAVAILABLE
-                self._attributes = {}
-
-        except (requests.ConnectionError, requests.Timeout) as err:
-            _LOGGER.error(f"Could not connect to Paperless: {err}")
-            self._state = STATE_UNAVAILABLE
-            self._attributes = {}
-
-    def _get_document_count(self, base_url):
-        """Placeholder method to get total document count."""
-        try:
-            # Replace with actual API endpoint if available
-            return 1000  # Mock data
-        except Exception:
-            return 0
-
-    def _get_untagged_document_count(self, base_url):
-        """Placeholder method to get untagged document count."""
-        try:
-            # Replace with actual API endpoint if available
-            return 50  # Mock data
-        except Exception:
-            return 0
-
-    def _get_storage_usage(self, base_url):
-        """Placeholder method to get storage usage."""
-        try:
-            # Replace with actual API endpoint if available
-            return "5.2 GB"  # Mock data
-        except Exception:
-            return "0 GB"
+            async with aiohttp.ClientSession() as session:
+                # Prüfe den Status-Endpunkt
+                async with session.get(f"{self._host}/api/", headers=headers) as response:
+                    if response.status == 200:
+                        self._state = "online"
+                        # Hole zusätzliche Statistiken
+                        async with session.get(f"{self._host}/api/statistics/", headers=headers) as stats_response:
+                            if stats_response.status == 200:
+                                stats = await stats_response.json()
+                                self._attributes = {
+                                    "document_count": stats.get("document_count", 0),
+                                    "inbox_count": stats.get("inbox_count", 0),
+                                    "total_size": stats.get("total_size", 0)
+                                }
+                    else:
+                        self._state = "offline"
+        except Exception as err:
+            _LOGGER.error("Fehler beim Abrufen von Paperless-ngx: %s", err)
+            self._state = "error" 
