@@ -1,5 +1,6 @@
 """Platform for sensor integration."""
 from __future__ import annotations
+import asyncio
 import aiohttp
 import async_timeout
 import logging
@@ -58,6 +59,13 @@ class PaperlessStatusSensor(SensorEntity):
         self._protocol = "https" if ssl else "http"
         self._base_url = f"{self._protocol}://{self._host}:{self._port}"
 
+    @property
+    def icon(self):
+        """Icon to use in the frontend."""
+        if self._attr_native_value == "Online":
+            return "mdi:file-document-multiple"
+        return "mdi:file-document-multiple-outline"
+
     async def _get_document_preview(self, doc_id: int) -> str | None:
         """Fetch document preview image."""
         url = f"{self._base_url}/api/documents/{doc_id}/preview/"
@@ -91,7 +99,11 @@ class PaperlessStatusSensor(SensorEntity):
                     if response.status == 200:
                         data = await response.json()
                         self._attr_native_value = "Online"
-                        documents = data.get("results", [])
+                        
+                        # Hier ist die Korrektur: Verwende 'count' statt len(results)
+                        total_count = data.get("count", 0)  # Dies ist die Gesamtanzahl
+                        documents = data.get("results", [])  # Dies sind nur die aktuellen Ergebnisse
+                        
                         current_doc_ids = {doc["id"] for doc in documents}
                         
                         # Finde neue Dokumente
@@ -107,11 +119,15 @@ class PaperlessStatusSensor(SensorEntity):
                                         "document_id": doc_id,
                                         "title": doc.get("title", "Unbekanntes Dokument"),
                                         "created": doc.get("created"),
-                                        "preview": preview
+                                        "preview": preview,
+                                        "total_documents": total_count  # Füge Gesamtanzahl hinzu
                                     })
                                     
                                     # Benachrichtigung senden
-                                    message = f"Neues Dokument: {doc.get('title', 'Unbekanntes Dokument')}"
+                                    message = (
+                                        f"Neues Dokument: {doc.get('title', 'Unbekanntes Dokument')}\n"
+                                        f"Gesamtanzahl: {total_count} Dokumente"
+                                    )
                                     if preview:
                                         message += f"\n\n![Vorschau](data:image/png;base64,{preview})"
                                     
@@ -126,7 +142,7 @@ class PaperlessStatusSensor(SensorEntity):
                                     )
                         
                         self._known_docs = current_doc_ids
-                        self._attr_extra_state_attributes["documents_count"] = len(documents)
+                        self._attr_extra_state_attributes["documents_count"] = total_count
                         self._attr_extra_state_attributes["last_error"] = None
 
                     elif response.status == 401:
@@ -135,6 +151,14 @@ class PaperlessStatusSensor(SensorEntity):
                     else:
                         self._attr_native_value = "Error"
                         self._attr_extra_state_attributes["last_error"] = f"HTTP {response.status}"
+        except aiohttp.ClientError as err:
+            self._attr_native_value = "Offline"
+            self._attr_extra_state_attributes["last_error"] = str(err)
+            _LOGGER.error("Error connecting to Paperless: %s", err)
+        except asyncio.TimeoutError:
+            self._attr_native_value = "Timeout"
+            self._attr_extra_state_attributes["last_error"] = "Connection timeout"
+            _LOGGER.error("Timeout connecting to Paperless")
         except Exception as err:
             self._attr_native_value = "Error"
             self._attr_extra_state_attributes["last_error"] = str(err)
